@@ -805,17 +805,6 @@ module pulp_soc import dm::*; #(
         .l2_private_slaves     ( s_mem_l2_pri_bus    ),
         .boot_rom_slave        ( s_mem_rom_bus       )
         );
-    
-    counter_ip_top #(
-                     .AXI_ADDR_WIDTH(AXI_ADDR_WIDTH),
-                     .AXI_ID_WIDTH(AXI_ID_OUT_WIDTH),
-                     .AXI_USER_WIDTH(AXI_USER_WIDTH)
-                    ) i_counter_ip (
-                     .clk_i(s_soc_clk),
-                     .rst_ni(s_soc_rstn),
-                     .test_mode_i(dft_test_mode_i),
-                     .axi_slave(s_counter_ip_bus)
-                    );
 
     /* Debug Subsystem */
 
