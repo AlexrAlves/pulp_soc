@@ -21,7 +21,6 @@
 `include "tcdm_macros.svh"
 `include "axi/assign.svh"
 
-
 module soc_interconnect
     import pkg_soc_interconnect::addr_map_rule_t;
     import axi_pkg::xbar_cfg_t;
