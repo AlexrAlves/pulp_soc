@@ -56,7 +56,8 @@ module soc_interconnect_wrap
        APB_BUS.Master           apb_peripheral_bus, // Connects to all the SoC Peripherals
        XBAR_TCDM_BUS.Master     l2_interleaved_slaves[NR_L2_PORTS], // Connects to the interleaved memory banks
        XBAR_TCDM_BUS.Master     l2_private_slaves[2], // Connects to core-private memory banks
-       XBAR_TCDM_BUS.Master     boot_rom_slave //Connects to the bootrom
+       XBAR_TCDM_BUS.Master     boot_rom_slave, //Connects to the bootrom
+       AXI_BUS.Master           counter_ip_slave
      );
 
     //**Do not change these values unles you verified that all downstream IPs are properly parametrized and support it**
@@ -92,18 +93,16 @@ module soc_interconnect_wrap
     ////////////////////////////////////////
     // Address Rules for the interconnect //
     ////////////////////////////////////////
-    localparam NR_RULES_L2_DEMUX = 4;
+    localparam NR_RULES_L2_DEMUX = 3;
     //Everything that is not routed to port 1 or 2 ends up in port 0 by default
     localparam addr_map_rule_t [NR_RULES_L2_DEMUX-1:0] L2_DEMUX_RULES = '{
        '{ idx: 1 , start_addr: `SOC_MEM_MAP_PRIVATE_BANK0_START_ADDR , end_addr: `SOC_MEM_MAP_PRIVATE_BANK1_END_ADDR} , //Both , bank0 and bank1 are in the  same address block
        '{ idx: 1 , start_addr: `SOC_MEM_MAP_BOOT_ROM_START_ADDR      , end_addr: `SOC_MEM_MAP_BOOT_ROM_END_ADDR}      ,
-       '{ idx: 2 , start_addr: `SOC_MEM_MAP_TCDM_START_ADDR          , end_addr: `SOC_MEM_MAP_TCDM_END_ADDR }         ,
-       '{ idx: 2 , start_addr: `SOC_MEM_MAP_TCDM_ALIAS_START_ADDR    , end_addr: `SOC_MEM_MAP_TCDM_ALIAS_END_ADDR}};
+       '{ idx: 2 , start_addr: `SOC_MEM_MAP_TCDM_START_ADDR          , end_addr: `SOC_MEM_MAP_TCDM_END_ADDR }};
 
-    localparam NR_RULES_INTERLEAVED_REGION = 2;
+    localparam NR_RULES_INTERLEAVED_REGION = 1;
     localparam addr_map_rule_t [NR_RULES_INTERLEAVED_REGION-1:0] INTERLEAVED_ADDR_SPACE = '{
-       '{ idx: 1 , start_addr: `SOC_MEM_MAP_TCDM_START_ADDR          , end_addr: `SOC_MEM_MAP_TCDM_END_ADDR },
-       '{ idx: 1 , start_addr: `SOC_MEM_MAP_TCDM_ALIAS_START_ADDR    , end_addr: `SOC_MEM_MAP_TCDM_ALIAS_END_ADDR}};
+       '{ idx: 1 , start_addr: `SOC_MEM_MAP_TCDM_START_ADDR          , end_addr: `SOC_MEM_MAP_TCDM_END_ADDR }};
 
     localparam NR_RULES_CONTIG_CROSSBAR = 3;
     localparam addr_map_rule_t [NR_RULES_CONTIG_CROSSBAR-1:0] CONTIGUOUS_CROSSBAR_RULES = '{
@@ -111,15 +110,33 @@ module soc_interconnect_wrap
         '{ idx: 1 , start_addr: `SOC_MEM_MAP_PRIVATE_BANK1_START_ADDR , end_addr: `SOC_MEM_MAP_PRIVATE_BANK1_END_ADDR} ,
         '{ idx: 2 , start_addr: `SOC_MEM_MAP_BOOT_ROM_START_ADDR      , end_addr: `SOC_MEM_MAP_BOOT_ROM_END_ADDR}};
 
-    localparam NR_RULES_AXI_CROSSBAR = 2;
+    localparam NR_RULES_AXI_CROSSBAR = 3;
     localparam addr_map_rule_t [NR_RULES_AXI_CROSSBAR-1:0] AXI_CROSSBAR_RULES = '{
        '{ idx: 0, start_addr: `SOC_MEM_MAP_AXI_PLUG_START_ADDR,    end_addr: `SOC_MEM_MAP_AXI_PLUG_END_ADDR},
-       '{ idx: 1, start_addr: `SOC_MEM_MAP_PERIPHERALS_START_ADDR, end_addr: `SOC_MEM_MAP_PERIPHERALS_END_ADDR}};
+       '{ idx: 1, start_addr: `SOC_MEM_MAP_PERIPHERALS_START_ADDR, end_addr: `SOC_MEM_MAP_PERIPHERALS_END_ADDR},
+       '{ idx: 2, start_addr: `SOC_MEM_MAP_COUNTER_IP_START_ADDR, end_addr: `SOC_MEM_MAP_COUNTER_IP_END_ADDR}};
+
+    //For legacy reasons, the fc_data port can alias the address prefix 0x000 to 0x1c0. E.g. an access to 0x00001234 is
+    //mapped to 0x1c001234. The following lines perform this remapping.
+    XBAR_TCDM_BUS tcdm_fc_data_addr_remapped();
+    assign tcdm_fc_data_addr_remapped.req = tcdm_fc_data.req;
+    assign tcdm_fc_data_addr_remapped.wen = tcdm_fc_data.wen;
+    assign tcdm_fc_data_addr_remapped.wdata = tcdm_fc_data.wdata;
+    assign tcdm_fc_data_addr_remapped.be = tcdm_fc_data.be;
+    assign tcdm_fc_data.gnt = tcdm_fc_data_addr_remapped.gnt;
+    assign tcdm_fc_data.r_opc = tcdm_fc_data_addr_remapped.r_opc;
+    assign tcdm_fc_data.r_rdata = tcdm_fc_data_addr_remapped.r_rdata;
+    assign tcdm_fc_data.r_valid = tcdm_fc_data_addr_remapped.r_valid;
+    //Remap address prefix 1c0 to 000
+    always_comb begin
+        tcdm_fc_data_addr_remapped.add = tcdm_fc_data.add;
+        if (tcdm_fc_data.add[31:20] == 12'h000)
+            tcdm_fc_data_addr_remapped.add[31:20] = 12'h1c0;
+    end
 
     //////////////////////////////
     // Instantiate Interconnect //
     //////////////////////////////
-
 
     //Internal wiring to APB protocol converter
     AXI_BUS #(.AXI_ADDR_WIDTH(32),
@@ -133,7 +150,9 @@ module soc_interconnect_wrap
     XBAR_TCDM_BUS master_ports[pkg_soc_interconnect::NR_TCDM_MASTER_PORTS](); //increase the package localparma as well
                                 //if you want to add new master ports. The parameter is used by other IPs to calcualte
                                 //the required AXI ID width.
-    `TCDM_ASSIGN_INTF(master_ports[0], tcdm_fc_data)
+
+    //Assign Master Ports to array
+    `TCDM_ASSIGN_INTF(master_ports[0], tcdm_fc_data_addr_remapped)
     `TCDM_ASSIGN_INTF(master_ports[1], tcdm_fc_instr)
     `TCDM_ASSIGN_INTF(master_ports[2], tcdm_udma_tx)
     `TCDM_ASSIGN_INTF(master_ports[3], tcdm_udma_rx)
@@ -158,9 +177,10 @@ module soc_interconnect_wrap
               .AXI_DATA_WIDTH(32),
               .AXI_ID_WIDTH(pkg_soc_interconnect::AXI_ID_OUT_WIDTH),
               .AXI_USER_WIDTH(AXI_USER_WIDTH)
-              ) axi_slaves[2]();
+              ) axi_slaves[3]();
     `AXI_ASSIGN(axi_slave_plug, axi_slaves[0])
     `AXI_ASSIGN(axi_to_axi_lite_bridge, axi_slaves[1])
+    `AXI_ASSIGN(conter_ip_slave, axi_slaves[2])
 
     //Interconnect instantiation
     soc_interconnect #(
@@ -174,7 +194,7 @@ module soc_interconnect_wrap
                        .NR_SLAVE_PORTS_CONTIG(3), // Bootrom + number of private memory banks (normally 1 for
                                                   // programm instructions and 1 for programm stack )
                        .NR_ADDR_RULES_SLAVE_PORTS_CONTIG(NR_RULES_CONTIG_CROSSBAR),
-                       .NR_AXI_SLAVE_PORTS(2), // 1 for AXI to cluster, 1 for SoC peripherals (converted to APB)
+                       .NR_AXI_SLAVE_PORTS(3), // 1 for AXI to cluster, 1 for SoC peripherals (converted to APB), 1 for counter_ip IP
                        .NR_ADDR_RULES_AXI_SLAVE_PORTS(NR_RULES_AXI_CROSSBAR),
                        .AXI_MASTER_ID_WIDTH(1), //Doesn't need to be changed. All axi masters in the current
                                                 //interconnect come from a TCDM protocol converter and thus do not have and AXI ID.
