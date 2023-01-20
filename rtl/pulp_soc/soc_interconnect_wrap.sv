@@ -180,7 +180,7 @@ module soc_interconnect_wrap
               ) axi_slaves[3]();
     `AXI_ASSIGN(axi_slave_plug, axi_slaves[0])
     `AXI_ASSIGN(axi_to_axi_lite_bridge, axi_slaves[1])
-    `AXI_ASSIGN(conter_ip_slave, axi_slaves[2])
+    `AXI_ASSIGN(counter_ip_slave, axi_slaves[2])
 
     //Interconnect instantiation
     soc_interconnect #(
