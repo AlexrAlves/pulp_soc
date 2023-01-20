@@ -233,6 +233,7 @@ module pulp_soc import dm::*; #(
     ///////////////////////////////////////////////////
 );
 
+    
     localparam FLL_ADDR_WIDTH        = 32;
     localparam FLL_DATA_WIDTH        = 32;
     localparam NB_L2_BANKS = `NB_L2_CHANNELS;
